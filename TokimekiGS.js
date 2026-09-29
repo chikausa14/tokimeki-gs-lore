@@ -17,7 +17,7 @@
  *   - full event definitions injected into every prompt
  */
 
-const VERSION = '0.1.1';
+const VERSION = '0.1.2';
 
 const TIME_BLOCKS = [
     'morning',
@@ -197,19 +197,49 @@ function weekdayFor(year, month, day) {
     const m = Math.max(1, Math.min(12, Number(month) || 1));
     const d = Math.max(1, Number(day) || 1);
 
-    // Anchor: Y1 4/1 = Monday (1).
+    // Fictional-calendar anchor:
+    // Y1 4/1 is Monday (1).
+    //
+    // Calculate the number of days relative to that exact anchor,
+    // rather than counting from January 1.
     let days = 0;
 
-    for (let yy = 1; yy < y; yy++) {
-        days += isLeapGameYear(yy) ? 366 : 365;
+    if (y === 1) {
+        // Dates before 4/1 are still supported.
+        const anchorMonth = 4;
+        const anchorDay = 1;
+
+        if (m > anchorMonth || (m === anchorMonth && d >= anchorDay)) {
+            for (let mm = anchorMonth; mm < m; mm++) {
+                days += daysInMonth(y, mm);
+            }
+            days += d - anchorDay;
+        } else {
+            for (let mm = m; mm < anchorMonth; mm++) {
+                days -= daysInMonth(y, mm);
+            }
+            days += d - anchorDay;
+        }
+    } else {
+        // Move forward from Y1 4/1 to the beginning of later years.
+        days += daysInMonth(1, 4) - 1;
+
+        for (let mm = 5; mm <= 12; mm++) {
+            days += daysInMonth(1, mm);
+        }
+
+        for (let yy = 2; yy < y; yy++) {
+            days += isLeapGameYear(yy) ? 366 : 365;
+        }
+
+        for (let mm = 1; mm < m; mm++) {
+            days += daysInMonth(y, mm);
+        }
+
+        days += d - 1;
     }
 
-    for (let mm = 1; mm < m; mm++) {
-        days += daysInMonth(y, mm);
-    }
-
-    days += d - 1;
-    return (1 + days) % 7;
+    return ((1 + days) % 7 + 7) % 7;
 }
 
 function isLeapGameYear(year) {
