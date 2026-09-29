@@ -255,16 +255,14 @@ function normalizeState(raw) {
         routeFacts: { ...base.routeFacts, ...(s.routeFacts || {}) },
     };
 
-    // Preserve the authoritative weekday when one already exists.
-    // Only derive it when the field is missing/invalid.
-    const suppliedWeekday = Number(out.calendar.weekday);
-    if (!Number.isInteger(suppliedWeekday) || suppliedWeekday < 0 || suppliedWeekday > 6) {
-        out.calendar.weekday = weekdayFor(
-            Number(out.calendar.year) || 1,
-            Number(out.calendar.month) || 4,
-            Number(out.calendar.day) || 1
-        );
-    }
+    // Weekday is derived state.
+    // Never trust a persisted weekday value; calculate it from
+    // the authoritative fictional game date.
+    out.calendar.weekday = weekdayFor(
+        Number(out.calendar.year) || 1,
+        Number(out.calendar.month) || 4,
+        Number(out.calendar.day) || 1
+    );
 
     out.calendar.period = TIME_BLOCKS.includes(out.calendar.period)
         ? out.calendar.period
