@@ -1,5 +1,5 @@
 /*
- * Tokimeki Girls Side — StatefulLore Core v0.1
+ * Tokimeki Girls Side — StatefulLore Core v0.1.4
  *
  * Purpose:
  *   Small authoritative dating-sim state engine.
@@ -15,9 +15,16 @@
  *   - model-authored numerical affection changes
  *   - duplicate UI state
  *   - full event definitions injected into every prompt
+ *
+ * v0.1.4:
+ *   - Strengthened Available -> Active event protocol.
+ *   - Available events now expose type, target, and valid choices.
+ *   - LLM is explicitly instructed to emit <game event="ID"/>
+ *     when an available event clearly begins or is occurring.
+ *   - Active-event choice protocol remains authoritative.
  */
 
-const VERSION = '0.1.3';
+const VERSION = '0.1.4';
 
 const TIME_BLOCKS = [
     'morning',
@@ -36,8 +43,13 @@ const STAGE_NAMES = [
 ];
 
 const WEEKDAYS = [
-    'Sunday', 'Monday', 'Tuesday', 'Wednesday',
-    'Thursday', 'Friday', 'Saturday'
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday'
 ];
 
 const DEFAULT_NPCS = {
@@ -52,7 +64,12 @@ const DEFAULT_NPCS = {
 
 const EVENTS = {
 
-    // 0. Testable school-arrival encounter.
+    /*
+     * TEST EVENT
+     *
+     * Automatically begins when the player's first message
+     * clearly indicates that they have arrived at school.
+     */
     school_arrival_rei_01: {
         id: 'school_arrival_rei_01',
         type: 'encounter',
@@ -66,12 +83,17 @@ const EVENTS = {
             !s.events.completed.school_arrival_rei_01,
 
         flow: {
-            choices: ['greet', 'keep_walking'],
+            choices: [
+                'greet',
+                'keep_walking'
+            ],
         },
 
         effects: {
             greet: {
-                affection: { rei: +1 },
+                affection: {
+                    rei: +1
+                }
             },
 
             keep_walking: {},
@@ -80,7 +102,18 @@ const EVENTS = {
         time: 0,
     },
 
-    // 1. Encounter — lightweight hallway/random encounter.
+    /*
+     * HALLWAY ENCOUNTER
+     *
+     * This is deliberately available after the first arrival event.
+     * The model must explicitly start it with:
+     *
+     * <game event="hallway_rei_01"/>
+     *
+     * and later resolve it with:
+     *
+     * <game event="hallway_rei_01" choice="greet"/>
+     */
     hallway_rei_01: {
         id: 'hallway_rei_01',
         type: 'encounter',
@@ -91,19 +124,28 @@ const EVENTS = {
             !s.events.completed.hallway_rei_01,
 
         flow: {
-            choices: ['greet', 'pass_by'],
+            choices: [
+                'greet',
+                'pass_by'
+            ],
         },
 
         effects: {
             greet: {
-                affection: { rei: +1 },
+                affection: {
+                    rei: +1
+                }
             },
+
+            pass_by: {},
         },
 
         time: 0,
     },
 
-    // 2. Normal activity — engine owns the time cost.
+    /*
+     * NORMAL AFTER-SCHOOL ACTIVITY
+     */
     after_school_free_01: {
         id: 'after_school_free_01',
         type: 'activity',
@@ -112,17 +154,25 @@ const EVENTS = {
             s.calendar.period === 'after_school',
 
         flow: {
-            choices: ['study', 'club', 'go_home'],
+            choices: [
+                'study',
+                'club',
+                'go_home'
+            ],
         },
 
         effects: {
             study: {
-                player: { academics: +1 },
+                player: {
+                    academics: +1
+                },
                 time: 1,
             },
 
             club: {
-                player: { clubs: +1 },
+                player: {
+                    clubs: +1
+                },
                 time: 1,
             },
 
@@ -132,7 +182,9 @@ const EVENTS = {
         },
     },
 
-    // 3. Scheduled school event.
+    /*
+     * SCHEDULED SCHOOL EVENT
+     */
     school_festival_01: {
         id: 'school_festival_01',
         type: 'scheduled',
@@ -144,23 +196,32 @@ const EVENTS = {
             !s.events.completed.school_festival_01,
 
         flow: {
-            choices: ['attend', 'help'],
+            choices: [
+                'attend',
+                'help'
+            ],
         },
 
         effects: {
             attend: {
-                player: { festival: +1 },
+                player: {
+                    festival: +1
+                },
                 time: 2,
             },
 
             help: {
-                player: { festival: +2 },
+                player: {
+                    festival: +2
+                },
                 time: 2,
             },
         },
     },
 
-    // 4. Date — selectable location, then resolution.
+    /*
+     * DATE
+     */
     rei_date_01: {
         id: 'rei_date_01',
         type: 'date',
@@ -174,28 +235,40 @@ const EVENTS = {
             isWeekend(s),
 
         flow: {
-            choices: ['cafe', 'arcade', 'park'],
+            choices: [
+                'cafe',
+                'arcade',
+                'park'
+            ],
         },
 
         effects: {
             cafe: {
-                affection: { rei: +4 },
+                affection: {
+                    rei: +4
+                },
                 time: 2,
             },
 
             arcade: {
-                affection: { rei: +3 },
+                affection: {
+                    rei: +3
+                },
                 time: 2,
             },
 
             park: {
-                affection: { rei: +2 },
+                affection: {
+                    rei: +2
+                },
                 time: 2,
             },
         },
     },
 
-    // 5. Special route event.
+    /*
+     * SPECIAL ROUTE EVENT
+     */
     rei_special_01: {
         id: 'rei_special_01',
         type: 'special',
@@ -207,17 +280,22 @@ const EVENTS = {
             !s.events.completed.rei_special_01,
 
         flow: {
-            choices: ['talk', 'leave'],
+            choices: [
+                'talk',
+                'leave'
+            ],
         },
 
         effects: {
             talk: {
-                affection: { rei: +5 },
+                affection: {
+                    rei: +5
+                },
 
                 relationFlags: {
                     rei: {
-                        specialEvent01: true,
-                    },
+                        specialEvent01: true
+                    }
                 },
             },
 
@@ -227,27 +305,40 @@ const EVENTS = {
 };
 
 
+/* =========================================================
+ * BASIC HELPERS
+ * ========================================================= */
+
 function clamp(n, min, max) {
-    return Math.max(min, Math.min(max, n));
+    return Math.max(
+        min,
+        Math.min(max, n)
+    );
 }
 
 
 function stageForAffection(value) {
-    const n = clamp(Number(value) || 0, 0, 100);
+    const n = clamp(
+        Number(value) || 0,
+        0,
+        100
+    );
 
     return (
         STAGE_NAMES.find(
             x => n >= x.min && n <= x.max
-        )?.id ||
-        'stranger'
+        )?.id
+        || 'stranger'
     );
 }
 
 
 function stageLabel(id) {
     return (
-        STAGE_NAMES.find(x => x.id === id)?.label ||
-        id
+        STAGE_NAMES.find(
+            x => x.id === id
+        )?.label
+        || id
     );
 }
 
@@ -266,7 +357,9 @@ function isSchoolDay(state) {
 
 
 function daysInMonth(year, month) {
-    const leap = isLeapGameYear(Number(year) || 1);
+    const leap = isLeapGameYear(
+        Number(year) || 1
+    );
 
     if (month === 2) {
         return leap ? 29 : 28;
@@ -289,8 +382,12 @@ function isLeapGameYear(year) {
 }
 
 
-// The dating sim uses its own fictional calendar.
-// Y1 4/1 is Monday.
+/* =========================================================
+ * FICTIONAL CALENDAR
+ *
+ * Y1 4/1 = Monday.
+ * ========================================================= */
+
 function weekdayFor(year, month, day) {
 
     const y = Math.max(
@@ -331,7 +428,10 @@ function weekdayFor(year, month, day) {
                 mm < m;
                 mm++
             ) {
-                days += daysInMonth(y, mm);
+                days += daysInMonth(
+                    y,
+                    mm
+                );
             }
 
             days += d - anchorDay;
@@ -343,7 +443,10 @@ function weekdayFor(year, month, day) {
                 mm < anchorMonth;
                 mm++
             ) {
-                days -= daysInMonth(y, mm);
+                days -= daysInMonth(
+                    y,
+                    mm
+                );
             }
 
             days += d - anchorDay;
@@ -351,14 +454,23 @@ function weekdayFor(year, month, day) {
 
     } else {
 
-        days += daysInMonth(1, 4) - 1;
+        /*
+         * Move forward from Y1 4/1
+         * to later years.
+         */
+
+        days +=
+            daysInMonth(1, 4) - 1;
 
         for (
             let mm = 5;
             mm <= 12;
             mm++
         ) {
-            days += daysInMonth(1, mm);
+            days += daysInMonth(
+                1,
+                mm
+            );
         }
 
         for (
@@ -376,17 +488,27 @@ function weekdayFor(year, month, day) {
             mm < m;
             mm++
         ) {
-            days += daysInMonth(y, mm);
+            days += daysInMonth(
+                y,
+                mm
+            );
         }
 
         days += d - 1;
     }
 
+    /*
+     * Monday = 1.
+     */
     return (
-        ((1 + days) % 7 + 7) % 7
-    );
+        (1 + days) % 7 + 7
+    ) % 7;
 }
 
+
+/* =========================================================
+ * INITIAL STATE
+ * ========================================================= */
 
 function makeInitialState() {
 
@@ -404,24 +526,32 @@ function makeInitialState() {
             year,
             month,
             day,
+
             weekday: weekdayFor(
                 year,
                 month,
                 day
             ),
+
             period: 'morning',
         },
 
         player: {
             name: '{{user}}',
+
             academics: 0,
+
             clubs: 0,
+
             festival: 0,
+
             money: 1000,
         },
 
         relationships:
-            structuredClone(DEFAULT_NPCS),
+            structuredClone(
+                DEFAULT_NPCS
+            ),
 
         events: {
             active: null,
@@ -429,10 +559,12 @@ function makeInitialState() {
         },
 
         world: {
+
             schoolFestival: {
                 month: 10,
                 day: 15,
             },
+
         },
 
         routeFacts: {},
@@ -440,9 +572,14 @@ function makeInitialState() {
 }
 
 
+/* =========================================================
+ * STATE NORMALIZATION
+ * ========================================================= */
+
 function normalizeState(raw) {
 
-    const base = makeInitialState();
+    const base =
+        makeInitialState();
 
     const s =
         raw &&
@@ -488,15 +625,30 @@ function normalizeState(raw) {
     };
 
 
-    // Weekday is derived state.
+    /*
+     * Weekday is DERIVED state.
+     *
+     * Never trust a persisted weekday.
+     */
     out.calendar.weekday =
         weekdayFor(
-            Number(out.calendar.year) || 1,
-            Number(out.calendar.month) || 4,
-            Number(out.calendar.day) || 1
+            Number(
+                out.calendar.year
+            ) || 1,
+
+            Number(
+                out.calendar.month
+            ) || 4,
+
+            Number(
+                out.calendar.day
+            ) || 1
         );
 
 
+    /*
+     * Validate time period.
+     */
     out.calendar.period =
         TIME_BLOCKS.includes(
             out.calendar.period
@@ -505,8 +657,14 @@ function normalizeState(raw) {
             : 'morning';
 
 
+    /*
+     * Normalize relationships.
+     */
     for (
-        const [id, npc]
+        const [
+            id,
+            npc
+        ]
         of Object.entries(
             out.relationships
         )
@@ -536,7 +694,10 @@ function normalizeState(raw) {
 
         npc.affection =
             clamp(
-                Number(npc.affection) || 0,
+                Number(
+                    npc.affection
+                ) || 0,
+
                 0,
                 100
             );
@@ -549,6 +710,9 @@ function normalizeState(raw) {
                 : {};
 
 
+        /*
+         * Stage is ALWAYS derived.
+         */
         npc.stage =
             stageForAffection(
                 npc.affection
@@ -567,6 +731,10 @@ function normalizeState(raw) {
 }
 
 
+/* =========================================================
+ * EVENT LOOKUP
+ * ========================================================= */
+
 function getEvent(id) {
     return EVENTS[id] || null;
 }
@@ -579,8 +747,10 @@ function requirementsPass(
 
     try {
 
-        return !!event?.requirements?.(
-            state
+        return !!(
+            event &&
+            event.requirements &&
+            event.requirements(state)
         );
 
     } catch {
@@ -589,6 +759,10 @@ function requirementsPass(
     }
 }
 
+
+/* =========================================================
+ * AVAILABLE EVENTS
+ * ========================================================= */
 
 function getAvailableEvents(state) {
 
@@ -604,15 +778,26 @@ function getAvailableEvents(state) {
 
         .map(
             event => ({
+
                 id: event.id,
+
                 type: event.type,
-                target: event.target || null,
+
+                target:
+                    event.target ||
+                    null,
+
                 choices:
-                    event.flow?.choices || [],
+                    event.flow?.choices ||
+                    [],
             })
         );
 }
 
+
+/* =========================================================
+ * ACTIVE EVENT
+ * ========================================================= */
 
 function findActiveEvent(state) {
 
@@ -625,18 +810,31 @@ function findActiveEvent(state) {
 }
 
 
-function detectSchoolArrival(messages) {
+/* =========================================================
+ * SCHOOL ARRIVAL DETECTOR
+ *
+ * This is only the special prototype
+ * trigger for the first test event.
+ * ========================================================= */
+
+function detectSchoolArrival(
+    messages
+) {
 
     const lastUser =
         [...(messages || [])]
+
             .reverse()
+
             .find(
                 m =>
                     m?.role === 'user'
             );
 
 
-    if (!lastUser?.content) {
+    if (
+        !lastUser?.content
+    ) {
         return false;
     }
 
@@ -678,11 +876,14 @@ function detectSchoolArrival(messages) {
 
 
     return phrases.some(
-        p =>
-            t.includes(p)
+        p => t.includes(p)
     );
 }
 
+
+/* =========================================================
+ * TIME
+ * ========================================================= */
 
 function advanceTime(
     state,
@@ -698,7 +899,9 @@ function advanceTime(
         );
 
 
-    while (remaining-- > 0) {
+    while (
+        remaining-- > 0
+    ) {
 
         const currentIndex =
             TIME_BLOCKS.indexOf(
@@ -706,6 +909,9 @@ function advanceTime(
             );
 
 
+        /*
+         * Move to next period.
+         */
         if (
             currentIndex <
             TIME_BLOCKS.length - 1
@@ -720,7 +926,9 @@ function advanceTime(
         }
 
 
-        // Evening -> next morning.
+        /*
+         * Evening -> next morning.
+         */
         state.calendar.period =
             'morning';
 
@@ -763,13 +971,20 @@ function advanceTime(
 }
 
 
+/* =========================================================
+ * EFFECT APPLICATION
+ * ========================================================= */
+
 function applyPlayerEffects(
     state,
     changes = {}
 ) {
 
     for (
-        const [key, delta]
+        const [
+            key,
+            delta
+        ]
         of Object.entries(changes)
     ) {
 
@@ -792,7 +1007,10 @@ function applyRelationshipEffects(
 ) {
 
     for (
-        const [id, delta]
+        const [
+            id,
+            delta
+        ]
         of Object.entries(changes)
     ) {
 
@@ -809,13 +1027,18 @@ function applyRelationshipEffects(
 
         npc.affection =
             clamp(
+
                 npc.affection +
                 Number(delta || 0),
+
                 0,
                 100
             );
 
 
+        /*
+         * Stage is derived immediately.
+         */
         npc.stage =
             stageForAffection(
                 npc.affection
@@ -830,7 +1053,10 @@ function applyRelationFlags(
 ) {
 
     for (
-        const [id, flags]
+        const [
+            id,
+            flags
+        ]
         of Object.entries(changes)
     ) {
 
@@ -851,6 +1077,10 @@ function applyRelationFlags(
 }
 
 
+/* =========================================================
+ * EVENT CHOICE EFFECTS
+ * ========================================================= */
+
 function applyEventChoice(
     state,
     event,
@@ -861,6 +1091,10 @@ function applyEventChoice(
         event.effects?.[choice];
 
 
+    /*
+     * Choice must exist in the
+     * registered event definition.
+     */
     if (!effects) {
         return false;
     }
@@ -909,6 +1143,10 @@ function applyEventChoice(
 }
 
 
+/* =========================================================
+ * START EVENT
+ * ========================================================= */
+
 function beginEvent(
     state,
     eventId
@@ -937,7 +1175,8 @@ function beginEvent(
         type: event.type,
 
         target:
-            event.target || null,
+            event.target ||
+            null,
 
         choices: [
             ...(event.flow?.choices || [])
@@ -949,6 +1188,10 @@ function beginEvent(
 }
 
 
+/* =========================================================
+ * RESOLVE EVENT
+ * ========================================================= */
+
 function resolveEvent(
     state,
     event,
@@ -959,11 +1202,13 @@ function resolveEvent(
         !event ||
         !state.events.active
     ) {
-
         return false;
     }
 
 
+    /*
+     * Event must actually be active.
+     */
     if (
         state.events.active.id !==
         event.id
@@ -973,6 +1218,9 @@ function resolveEvent(
     }
 
 
+    /*
+     * Choice must be registered.
+     */
     if (
         !event.flow?.choices?.includes(
             choice
@@ -983,6 +1231,9 @@ function resolveEvent(
     }
 
 
+    /*
+     * Apply only registered effects.
+     */
     if (
         !applyEventChoice(
             state,
@@ -995,11 +1246,18 @@ function resolveEvent(
     }
 
 
+    /*
+     * Mark event complete.
+     */
     state.events.completed[
         event.id
     ] = true;
 
 
+    /*
+     * First date becomes a persistent
+     * relationship fact.
+     */
     if (
         event.target === 'rei' &&
         event.type === 'date'
@@ -1010,13 +1268,31 @@ function resolveEvent(
     }
 
 
+    /*
+     * No event remains active.
+     */
     state.events.active = null;
+
 
     return true;
 }
 
 
-function parseGameSignals(text) {
+/* =========================================================
+ * GAME SIGNAL PARSER
+ *
+ * Expected:
+ *
+ * <game event="hallway_rei_01"/>
+ *
+ * or:
+ *
+ * <game event="hallway_rei_01" choice="greet"/>
+ * ========================================================= */
+
+function parseGameSignals(
+    text
+) {
 
     const signals = [];
 
@@ -1046,7 +1322,8 @@ function parseGameSignals(text) {
             )) !== null
         ) {
 
-            attrs[a[1]] = a[2];
+            attrs[a[1]] =
+                a[2];
         }
 
 
@@ -1055,7 +1332,9 @@ function parseGameSignals(text) {
             attrs.choice
         ) {
 
-            signals.push(attrs);
+            signals.push(
+                attrs
+            );
         }
     }
 
@@ -1064,9 +1343,17 @@ function parseGameSignals(text) {
 }
 
 
-function stripGameSignals(text) {
+/* =========================================================
+ * REMOVE SILENT GAME SIGNALS
+ * ========================================================= */
 
-    return String(text || '')
+function stripGameSignals(
+    text
+) {
+
+    return String(
+        text || ''
+    )
 
         .replace(
             /<game\b[^>]*\/?>/gi,
@@ -1082,20 +1369,37 @@ function stripGameSignals(text) {
 }
 
 
+/* =========================================================
+ * CALENDAR FORMAT
+ * ========================================================= */
+
 function formatCalendar(c) {
 
     const wd =
-        WEEKDAYS[c.weekday] || '?';
+        WEEKDAYS[
+            c.weekday
+        ] || '?';
 
 
     return (
-        `Y${c.year} ${c.month}/${c.day} ` +
-        `${wd} | ${c.period}`
+        `Y${c.year} ` +
+        `${c.month}/${c.day} ` +
+        `${wd} | ` +
+        `${c.period}`
     );
 }
 
 
-function buildCompactHeader(state) {
+/* =========================================================
+ * COMPACT MODEL HEADER
+ *
+ * IMPORTANT:
+ * This is the v0.1.4 protocol change.
+ * ========================================================= */
+
+function buildCompactHeader(
+    state
+) {
 
     const active =
         findActiveEvent(state);
@@ -1106,15 +1410,15 @@ function buildCompactHeader(state) {
             state.relationships
         )
 
-        .slice(0, 8)
+            .slice(0, 8)
 
-        .map(
-            ([id, npc]) =>
-                `${id}:${npc.affection} ` +
-                `${stageLabel(npc.stage)}`
-        )
+            .map(
+                ([id, npc]) =>
+                    `${id}:${npc.affection} ` +
+                    `${stageLabel(npc.stage)}`
+            )
 
-        .join(' | ');
+            .join(' | ');
 
 
     const lines = [
@@ -1131,85 +1435,100 @@ function buildCompactHeader(state) {
 
         active
 
-            ? `Active: ${active.id} | choose: ${active.flow.choices.join(' | ')}`
+            ? (
+                `Active: ${active.id}` +
+                ` | type: ${active.type}` +
+                ` | target: ${active.target || '—'}` +
+                ` | choose: ${active.flow.choices.join(' | ')}`
+            )
 
             : 'Active: none',
     ];
 
 
+    /*
+     * If there is no active event,
+     * expose currently available events.
+     *
+     * We deliberately expose only:
+     * - type
+     * - ID
+     * - target
+     * - valid choices
+     *
+     * We do NOT expose:
+     * - requirements
+     * - affection effects
+     * - time effects
+     * - internal implementation
+     */
+
     if (!active) {
 
         const available =
-            getAvailableEvents(state)
+            getAvailableEvents(
+                state
+            )
 
                 .slice(0, 5)
 
                 .map(
-                    e => e.id
+                    e => {
+
+                        const target =
+                            e.target
+                                ? ` | target: ${e.target}`
+                                : '';
+
+                        const choices =
+                            e.choices?.length
+                                ? ` | choices: ${e.choices.join(' | ')}`
+                                : '';
+
+                        return (
+                            `${e.type}: ${e.id}` +
+                            target +
+                            choices
+                        );
+                    }
                 )
 
-                .join(' | ');
+                .join('\n');
 
 
         if (available) {
 
             lines.push(
-                `Available: ${available}`
+                'Available events:',
+                available
             );
         }
     }
 
 
     /*
-     * IMPORTANT:
+     * Explicit game protocol.
      *
-     * This is the LLM <-> engine handshake.
-     *
-     * When an event is active, the model must emit
-     * exactly one valid game signal when the user's
-     * action clearly resolves one of the listed choices.
-     *
-     * The model does NOT calculate effects.
-     * StatefulLore does that after receiving the signal.
+     * This is intentionally concise.
      */
-
-    if (active) {
-
-        lines.push(
-
-            'ACTIVE EVENT PROTOCOL:',
-
-            'The current event is mechanically active.',
-
-            'The listed choose values are the only valid mechanical choices.',
-
-            'When the user clearly performs one listed choice, narrate the consequence naturally and emit exactly one matching signal:',
-
-            `<game event="${active.id}" choice="CHOICE_ID"/>`,
-
-            'Replace CHOICE_ID with exactly one of the listed choice IDs.',
-
-            'Do not invent event IDs or choice IDs.',
-
-            'Do not output affection changes, stat changes, time changes, flags, relationship stages, or other mechanical effects yourself.',
-
-            'If the user has not yet performed a listed choice, continue the scene naturally and do not resolve the event yet.',
-        );
-
-    } else {
-
-        lines.push(
-
-            'No event is currently active.',
-
-            'Narrate normally unless a valid game action or event signal is explicitly required.',
-        );
-    }
-
 
     lines.push(
 
-        'The <game .../> signal is an internal mechanical instruction and will be removed before the player sees the final response.',
+        '',
+
+        'GAME SIGNAL PROTOCOL:',
+
+        '1. If an Available event clearly begins or is currently occurring in the scene, emit <game event="EVENT_ID"/> once to start it.',
+
+        '2. If an Active event requires a player choice and the player clearly selects one listed choice, emit <game event="EVENT_ID" choice="CHOICE_ID"/>.',
+
+        '3. Never invent event IDs, choice IDs, affection changes, time changes, stats, flags, or effects.',
+
+        '4. Starting an event does not apply its effects. Only a valid choice resolves an event.',
+
+        '5. If no game event is occurring, narrate normally without a game signal.',
+
+        '6. The <game .../> signal is silent. Never mention the signal or game mechanics in the narrative.',
 
         '[/GAME]',
     );
@@ -1219,7 +1538,13 @@ function buildCompactHeader(state) {
 }
 
 
-function _hudContent(state) {
+/* =========================================================
+ * HUD
+ * ========================================================= */
+
+function _hudContent(
+    state
+) {
 
     if (!state) {
 
@@ -1240,36 +1565,38 @@ function _hudContent(state) {
             state.relationships
         )
 
-        .map(
-            ([id, npc]) =>
+            .map(
+                ([id, npc]) =>
 
-                `<span style="margin-right:10px">` +
+                    `<span style="margin-right:10px">` +
 
-                `${escapeHtml(
-                    npc.name || id
-                )}` +
+                    `${escapeHtml(
+                        npc.name || id
+                    )}` +
 
-                ` ♥ ${npc.affection} · ` +
+                    ` ♥ ${npc.affection} · ` +
 
-                `${escapeHtml(
-                    stageLabel(
-                        npc.stage
-                    )
-                )}` +
+                    `${escapeHtml(
+                        stageLabel(
+                            npc.stage
+                        )
+                    )}` +
 
-                `</span>`
-        )
+                    `</span>`
+            )
 
-        .join('');
+            .join('');
 
 
     return `
 
-        <div style="
-            font-family:system-ui,sans-serif;
-            font-size:12px;
-            line-height:1.5;
-        ">
+        <div
+            style="
+                font-family:system-ui,sans-serif;
+                font-size:12px;
+                line-height:1.5;
+            "
+        >
 
             <div>
 
@@ -1281,7 +1608,9 @@ function _hudContent(state) {
                 ·
 
                 ${escapeHtml(
-                    WEEKDAYS[c.weekday] || ''
+                    WEEKDAYS[
+                        c.weekday
+                    ] || ''
                 )}
 
                 ·
@@ -1292,7 +1621,9 @@ function _hudContent(state) {
 
             </div>
 
-            <div style="margin-top:4px;">
+            <div
+                style="margin-top:4px;"
+            >
 
                 ${
                     rel ||
@@ -1302,11 +1633,18 @@ function _hudContent(state) {
             </div>
 
         </div>
+
     `;
 }
 
 
-function escapeHtml(value) {
+/* =========================================================
+ * HTML ESCAPING
+ * ========================================================= */
+
+function escapeHtml(
+    value
+) {
 
     return String(
         value ?? ''
@@ -1339,6 +1677,10 @@ function escapeHtml(value) {
 }
 
 
+/* =========================================================
+ * STATEFULLORE MODULE
+ * ========================================================= */
+
 const TokimekiGS = {
 
     name:
@@ -1348,6 +1690,10 @@ const TokimekiGS = {
         VERSION,
 
 
+    /* -----------------------------------------------------
+     * INITIALIZATION
+     * ----------------------------------------------------- */
+
     init(data) {
 
         return normalizeState(
@@ -1356,6 +1702,10 @@ const TokimekiGS = {
         );
     },
 
+
+    /* -----------------------------------------------------
+     * BEFORE GENERATION
+     * ----------------------------------------------------- */
 
     processTurn({
 
@@ -1379,19 +1729,19 @@ const TokimekiGS = {
 
         state.turn =
             (
-                Number(state.turn) || 0
+                Number(
+                    state.turn
+                ) || 0
             ) + 1;
 
 
         /*
-         * Same-turn school-arrival trigger.
+         * Special first-day school-arrival
+         * detector.
          *
-         * This is only the prototype trigger.
-         * Later the event system itself will become
-         * calendar/event driven rather than relying
-         * on phrase detection.
+         * This is intentionally separate from
+         * normal Available-event handling.
          */
-
         if (
 
             !state.events.active &&
@@ -1414,11 +1764,15 @@ const TokimekiGS = {
         }
 
 
+        /*
+         * Capture persona name once.
+         */
         if (
 
             personaName &&
 
-            state.player.name === '{{user}}'
+            state.player.name ===
+                '{{user}}'
 
         ) {
 
@@ -1439,6 +1793,10 @@ const TokimekiGS = {
         };
     },
 
+
+    /* -----------------------------------------------------
+     * AFTER GENERATION
+     * ----------------------------------------------------- */
 
     handleResponse({
 
@@ -1464,6 +1822,9 @@ const TokimekiGS = {
             assistantText;
 
 
+        /*
+         * Process signals in order.
+         */
         for (
             const signal
             of signals
@@ -1482,27 +1843,33 @@ const TokimekiGS = {
 
 
             const event =
-                getEvent(eventId);
+                getEvent(
+                    eventId
+                );
 
 
+            /*
+             * Unknown event IDs are ignored.
+             */
             if (!event) {
                 continue;
             }
 
 
             /*
-             * Two-step protocol:
+             * -----------------------------------------
+             * START EVENT
              *
-             * <game event="EVENT_ID"/>
-             *
-             * starts an event.
-             *
-             * <game event="EVENT_ID" choice="CHOICE_ID"/>
-             *
-             * resolves an active event.
+             * <game event="event_id"/>
+             * -----------------------------------------
              */
 
             if (!choice) {
+
+                /*
+                 * Never overwrite an already
+                 * active event.
+                 */
 
                 if (
                     !state.events.active
@@ -1514,13 +1881,26 @@ const TokimekiGS = {
                     );
                 }
 
+
                 continue;
             }
 
 
             /*
-             * The model cannot bypass the
-             * active-event lifecycle.
+             * -----------------------------------------
+             * RESOLVE EVENT
+             *
+             * <game event="event_id"
+             *       choice="choice_id"/>
+             * -----------------------------------------
+             */
+
+
+            /*
+             * Model cannot bypass lifecycle.
+             *
+             * If the requested event is not
+             * currently active, ignore it.
              */
 
             if (
@@ -1540,6 +1920,11 @@ const TokimekiGS = {
         }
 
 
+        /*
+         * Remove silent game tags from
+         * displayed assistant text.
+         */
+
         cleanedText =
             stripGameSignals(
                 cleanedText
@@ -1547,10 +1932,10 @@ const TokimekiGS = {
 
 
         /*
-         * Keep all derived relationship
-         * stages authoritative.
+         * Re-derive every relationship stage.
+         *
+         * Stage is never authoritative state.
          */
-
         for (
             const npc
             of Object.values(
@@ -1566,11 +1951,17 @@ const TokimekiGS = {
 
 
         return {
+
             state,
+
             cleanedText,
         };
     },
 
+
+    /* -----------------------------------------------------
+     * HUD SUPPORT
+     * ----------------------------------------------------- */
 
     _getHudContent() {
 
@@ -1580,12 +1971,15 @@ const TokimekiGS = {
     },
 
 
-    getSettingsHtml(config) {
+    getSettingsHtml(
+        config
+    ) {
 
         return `
 
             <div
                 id="tokimeki-gs-hud"
+
                 style="
                     padding:10px;
                     border:1px solid #777;
@@ -1629,7 +2023,13 @@ const TokimekiGS = {
     },
 
 
-    getDebugInfo(state) {
+    /* -----------------------------------------------------
+     * DEBUG
+     * ----------------------------------------------------- */
+
+    getDebugInfo(
+        state
+    ) {
 
         const s =
             normalizeState(
@@ -1663,10 +2063,11 @@ const TokimekiGS = {
                     s.events.completed,
 
                 available:
-                    getAvailableEvents(s)
-                        .map(
-                            x => x.id
-                        ),
+                    getAvailableEvents(
+                        s
+                    ).map(
+                        x => x.id
+                    ),
             },
 
             null,
