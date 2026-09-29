@@ -17,7 +17,7 @@
  *   - full event definitions injected into every prompt
  */
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 
 const TIME_BLOCKS = [
     'morning',
@@ -28,11 +28,11 @@ const TIME_BLOCKS = [
 ];
 
 const STAGE_NAMES = [
-    { min: 0,  max: 9,   id: 'stranger',        label: 'Stranger' },
-    { min: 10, max: 29,  id: 'friend',          label: 'Friend' },
-    { min: 30, max: 59,  id: 'close_friend',    label: 'Close Friend' },
-    { min: 60, max: 79,  id: 'falling_for_you', label: 'Falling for You' },
-    { min: 80, max: 100, id: 'in_love',         label: 'In Love' },
+    { min: 0,  max: 9,   id: 'stranger',       label: 'Stranger' },
+    { min: 10, max: 29,  id: 'friend',         label: 'Friend' },
+    { min: 30, max: 59,  id: 'close_friend',   label: 'Close Friend' },
+    { min: 60, max: 79,  id: 'falling_for_you',label: 'Falling for You' },
+    { min: 80, max: 100, id: 'in_love',        label: 'In Love' },
 ];
 
 const WEEKDAYS = [
@@ -51,6 +51,27 @@ const DEFAULT_NPCS = {
 };
 
 const EVENTS = {
+    // 0. Testable school-arrival encounter.
+    school_arrival_rei_01: {
+        id: 'school_arrival_rei_01',
+        type: 'encounter',
+        target: 'rei',
+        requirements: s =>
+            s.calendar.year === 1 &&
+            s.calendar.month === 4 &&
+            s.calendar.day === 1 &&
+            s.calendar.period === 'morning' &&
+            !s.events.completed.school_arrival_rei_01,
+        flow: {
+            choices: ['greet', 'keep_walking'],
+        },
+        effects: {
+            greet: { affection: { rei: +1 } },
+            keep_walking: {},
+        },
+        time: 0,
+    },
+
     // 1. Encounter — a lightweight hallway/random encounter.
     hallway_rei_01: {
         id: 'hallway_rei_01',
@@ -257,7 +278,7 @@ function normalizeState(raw) {
 
     // Weekday is derived state.
     // Never trust a persisted weekday value; calculate it from
-    // the authoritative fictional game date.
+    // the authoritative fictional game date every time.
     out.calendar.weekday = weekdayFor(
         Number(out.calendar.year) || 1,
         Number(out.calendar.month) || 4,
@@ -324,12 +345,39 @@ function findActiveEvent(state) {
     return id ? getEvent(id) : null;
 }
 
+function detectSchoolArrival(messages) {
+    const lastUser = [...(messages || [])]
+        .reverse()
+        .find(m => m?.role === 'user');
+
+    if (!lastUser?.content) return false;
+
+    const t = String(lastUser.content).toLowerCase();
+
+    const phrases = [
+        'walk into school',
+        'walked into school',
+        'walking into school',
+        'enter school',
+        'entering school',
+        'entered school',
+        'arrive at school',
+        'arrived at school',
+        'go to school',
+        'going to school',
+        'went to school',
+        'head to school',
+        'headed to school',
+    ];
+
+    return phrases.some(p => t.includes(p));
+}
+
 function advanceTime(state, blocks = 0) {
     let remaining = Math.max(0, Math.floor(Number(blocks) || 0));
 
     while (remaining-- > 0) {
         const currentIndex = TIME_BLOCKS.indexOf(state.calendar.period);
-
         if (currentIndex < TIME_BLOCKS.length - 1) {
             state.calendar.period = TIME_BLOCKS[currentIndex + 1];
             continue;
@@ -340,11 +388,7 @@ function advanceTime(state, blocks = 0) {
         state.calendar.day += 1;
         state.calendar.weekday = (state.calendar.weekday + 1) % 7;
 
-        const dim = daysInMonth(
-            state.calendar.year,
-            state.calendar.month
-        );
-
+        const dim = daysInMonth(state.calendar.year, state.calendar.month);
         if (state.calendar.day > dim) {
             state.calendar.day = 1;
             state.calendar.month += 1;
@@ -371,13 +415,11 @@ function applyRelationshipEffects(state, changes = {}) {
         if (!state.relationships[id]) continue;
 
         const npc = state.relationships[id];
-
         npc.affection = clamp(
             npc.affection + Number(delta || 0),
             0,
             100
         );
-
         npc.stage = stageForAffection(npc.affection);
     }
 }
@@ -385,7 +427,6 @@ function applyRelationshipEffects(state, changes = {}) {
 function applyRelationFlags(state, changes = {}) {
     for (const [id, flags] of Object.entries(changes)) {
         if (!state.relationships[id]) continue;
-
         state.relationships[id].flags = {
             ...state.relationships[id].flags,
             ...flags,
@@ -395,17 +436,13 @@ function applyRelationFlags(state, changes = {}) {
 
 function applyEventChoice(state, event, choice) {
     const effects = event.effects?.[choice];
-
     if (!effects) return false;
 
     applyPlayerEffects(state, effects.player);
     applyRelationshipEffects(state, effects.affection);
     applyRelationFlags(state, effects.relationFlags);
 
-    if (
-        effects.routeFacts &&
-        typeof effects.routeFacts === 'object'
-    ) {
+    if (effects.routeFacts && typeof effects.routeFacts === 'object') {
         Object.assign(state.routeFacts, effects.routeFacts);
     }
 
@@ -418,10 +455,7 @@ function applyEventChoice(state, event, choice) {
 
 function beginEvent(state, eventId) {
     const event = getEvent(eventId);
-
-    if (!event || !requirementsPass(event, state)) {
-        return false;
-    }
+    if (!event || !requirementsPass(event, state)) return false;
 
     state.events.active = {
         id: event.id,
@@ -435,18 +469,9 @@ function beginEvent(state, eventId) {
 
 function resolveEvent(state, event, choice) {
     if (!event || !state.events.active) return false;
-
-    if (state.events.active.id !== event.id) {
-        return false;
-    }
-
-    if (!event.flow?.choices?.includes(choice)) {
-        return false;
-    }
-
-    if (!applyEventChoice(state, event, choice)) {
-        return false;
-    }
+    if (state.events.active.id !== event.id) return false;
+    if (!event.flow?.choices?.includes(choice)) return false;
+    if (!applyEventChoice(state, event, choice)) return false;
 
     state.events.completed[event.id] = true;
 
@@ -455,7 +480,6 @@ function resolveEvent(state, event, choice) {
     }
 
     state.events.active = null;
-
     return true;
 }
 
@@ -466,9 +490,7 @@ function parseGameSignals(text) {
 
     while ((match = re.exec(String(text || ''))) !== null) {
         const attrs = {};
-        const attrRe =
-            /([a-zA-Z][\w-]*)\s*=\s*["']([^"']*)["']/g;
-
+        const attrRe = /([a-zA-Z][\w-]*)\s*=\s*["']([^"']*)["']/g;
         let a;
 
         while ((a = attrRe.exec(match[1])) !== null) {
@@ -492,13 +514,11 @@ function stripGameSignals(text) {
 
 function formatCalendar(c) {
     const wd = WEEKDAYS[c.weekday] || '?';
-
     return `Y${c.year} ${c.month}/${c.day} ${wd} | ${c.period}`;
 }
 
 function buildCompactHeader(state) {
     const active = findActiveEvent(state);
-
     const relationships = Object.entries(state.relationships)
         .slice(0, 8)
         .map(([id, npc]) =>
@@ -509,9 +529,7 @@ function buildCompactHeader(state) {
     const lines = [
         '[GAME]',
         formatCalendar(state.calendar),
-        relationships
-            ? `Relations: ${relationships}`
-            : 'Relations: —',
+        relationships ? `Relations: ${relationships}` : 'Relations: —',
         active
             ? `Active: ${active.id} | choose: ${active.flow.choices.join(' | ')}`
             : 'Active: none',
@@ -524,10 +542,7 @@ function buildCompactHeader(state) {
             .slice(0, 5)
             .map(e => e.id)
             .join(' | ');
-
-        if (available) {
-            lines.push(`Available: ${available}`);
-        }
+        if (available) lines.push(`Available: ${available}`);
     }
 
     lines.push(
@@ -541,12 +556,9 @@ function buildCompactHeader(state) {
 }
 
 function _hudContent(state) {
-    if (!state) {
-        return '<span>Tokimeki GS: waiting for first turn…</span>';
-    }
+    if (!state) return '<span>Tokimeki GS: waiting for first turn…</span>';
 
     const c = state.calendar;
-
     const rel = Object.entries(state.relationships)
         .map(([id, npc]) =>
             `<span style="margin-right:10px">${escapeHtml(npc.name || id)} ♥ ${npc.affection} · ${escapeHtml(stageLabel(npc.stage))}</span>`
@@ -555,14 +567,8 @@ function _hudContent(state) {
 
     return `
         <div style="font-family:system-ui,sans-serif;font-size:12px;line-height:1.5;">
-            <div>
-                <b>Y${c.year} · ${c.month}/${c.day}</b>
-                · ${escapeHtml(WEEKDAYS[c.weekday] || '')}
-                · ${escapeHtml(c.period)}
-            </div>
-            <div style="margin-top:4px;">
-                ${rel || 'No relationships yet.'}
-            </div>
+            <div><b>Y${c.year} · ${c.month}/${c.day}</b> · ${escapeHtml(WEEKDAYS[c.weekday] || '')} · ${escapeHtml(c.period)}</div>
+            <div style="margin-top:4px;">${rel || 'No relationships yet.'}</div>
         </div>
     `;
 }
@@ -581,9 +587,7 @@ const TokimekiGS = {
     version: VERSION,
 
     init(data) {
-        return normalizeState(
-            data || makeInitialState()
-        );
+        return normalizeState(data || makeInitialState());
     },
 
     processTurn({
@@ -597,29 +601,27 @@ const TokimekiGS = {
 
         state.turn = (Number(state.turn) || 0) + 1;
 
+        // Same-turn school-arrival trigger for the prototype test.
         if (
-            personaName &&
-            state.player.name === '{{user}}'
+            !state.events.active &&
+            detectSchoolArrival(messages) &&
+            requirementsPass(EVENTS.school_arrival_rei_01, state)
         ) {
+            beginEvent(state, 'school_arrival_rei_01');
+        }
+
+        if (personaName && state.player.name === '{{user}}') {
             state.player.name = personaName;
         }
 
         const header = buildCompactHeader(state);
 
-        return {
-            header,
-            state
-        };
+        return { header, state };
     },
 
-    handleResponse({
-        assistantText,
-        state
-    } = {}) {
+    handleResponse({ assistantText, state } = {}) {
         state = normalizeState(state);
-
         const signals = parseGameSignals(assistantText);
-
         let cleanedText = assistantText;
 
         for (const signal of signals) {
@@ -627,69 +629,41 @@ const TokimekiGS = {
             const choice = signal.choice;
 
             // Two-step protocol:
-            //
             //   <game event="rei_date_01"/>
-            //
             // starts an event.
-            //
             //   <game event="rei_date_01" choice="cafe"/>
-            //
             // resolves an active event.
-
             if (!eventId) continue;
 
             const event = getEvent(eventId);
-
             if (!event) continue;
 
             if (!choice) {
                 // Never start over an existing active event.
-                if (!state.events.active) {
-                    beginEvent(state, eventId);
-                }
-
+                if (!state.events.active) beginEvent(state, eventId);
                 continue;
             }
 
-            if (
-                state.events.active?.id !== eventId
-            ) {
+            if (state.events.active?.id !== eventId) {
                 // The model cannot bypass the event lifecycle.
                 continue;
             }
 
-            resolveEvent(
-                state,
-                event,
-                choice
-            );
+            resolveEvent(state, event, choice);
         }
 
-        cleanedText = stripGameSignals(
-            cleanedText
-        );
+        cleanedText = stripGameSignals(cleanedText);
 
         // Keep all derived relationship stages authoritative.
-        for (
-            const npc of Object.values(
-                state.relationships
-            )
-        ) {
-            npc.stage = stageForAffection(
-                npc.affection
-            );
+        for (const npc of Object.values(state.relationships)) {
+            npc.stage = stageForAffection(npc.affection);
         }
 
-        return {
-            state,
-            cleanedText
-        };
+        return { state, cleanedText };
     },
 
     _getHudContent() {
-        return _hudContent(
-            this._hudState
-        );
+        return _hudContent(this._hudState);
     },
 
     getSettingsHtml(config) {
@@ -703,22 +677,13 @@ const TokimekiGS = {
 
     updateHud(state, config) {
         this._hudState = state;
-
-        const el = document.getElementById(
-            'tokimeki-gs-hud'
-        );
-
-        if (el) {
-            el.innerHTML =
-                this._getHudContent();
-        }
-
+        const el = document.getElementById('tokimeki-gs-hud');
+        if (el) el.innerHTML = this._getHudContent();
         window._tokimekiGSFloatRefresh?.();
     },
 
     getDebugInfo(state) {
         const s = normalizeState(state);
-
         return JSON.stringify({
             version: VERSION,
             turn: s.turn,
@@ -727,8 +692,7 @@ const TokimekiGS = {
             relationships: s.relationships,
             activeEvent: s.events.active,
             completed: s.events.completed,
-            available: getAvailableEvents(s)
-                .map(x => x.id),
+            available: getAvailableEvents(s).map(x => x.id),
         }, null, 2);
     },
 };
